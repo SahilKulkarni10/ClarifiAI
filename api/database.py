@@ -11,11 +11,21 @@ mongodb = MongoDB()
 async def connect_to_mongo():
     """Create database connection"""
     try:
+        print(f"🔌 Attempting to connect to MongoDB...")
+        print(f"   URI configured: {'Yes' if settings.MONGODB_URI else 'No'}")
+        
+        if not settings.MONGODB_URI or settings.MONGODB_URI == "mongodb://localhost:27017":
+            raise Exception("MongoDB URI not configured or using localhost")
+        
         # Create MongoDB client without explicit SSL settings to use defaults
-        mongodb.client = AsyncIOMotorClient(settings.MONGODB_URI)
+        mongodb.client = AsyncIOMotorClient(
+            settings.MONGODB_URI,
+            serverSelectionTimeoutMS=5000,  # 5 second timeout
+            connectTimeoutMS=5000
+        )
         mongodb.database = mongodb.client[settings.DATABASE_NAME]
         
-        # Test connection
+        # Test connection with timeout
         await mongodb.client.admin.command('ping')
         print("✅ Connected to MongoDB Atlas!")
         
@@ -24,8 +34,10 @@ async def connect_to_mongo():
         
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
-        # Re-raise the exception instead of going to offline mode
-        raise Exception(f"Failed to connect to MongoDB Atlas: {e}")
+        print("⚠️  API will start without database - set MONGODB_URL environment variable")
+        # Don't re-raise - let the app start anyway
+        mongodb.client = None
+        mongodb.database = None
 
 async def close_mongo_connection():
     """Close database connection"""
