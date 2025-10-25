@@ -17,8 +17,8 @@ from routes.finance import router as finance_router
 from routes.chat import router as chat_router
 from routes.analytics import router as analytics_router
 
-# Import RAG system
-from rag_system import finance_scraper
+# Don't import rag_system at module level - it will be lazy loaded
+# from rag_system import finance_scraper
 
 # Configure logging
 logging.basicConfig(

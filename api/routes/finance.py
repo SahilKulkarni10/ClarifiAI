@@ -8,13 +8,17 @@ from models import (
 )
 from auth import get_current_user
 from database import get_database
-from rag_system import vector_store
+from rag_system import get_vector_store
 from utils import prepare_document_for_mongo, prepare_document_for_vector_store
 from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/finance", tags=["Finance Data"])
+
+# Helper to get vector store instance lazily
+def _get_vector_store():
+    return get_vector_store()
 
 # Income Routes
 @router.post("/income", response_model=dict)
@@ -44,7 +48,7 @@ async def add_income(
         vector_doc = prepare_document_for_vector_store(income_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "income", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "income", vector_doc)
         
         logger.info(f"Income added for user: {user_id}")
         
@@ -200,7 +204,7 @@ async def add_expense(
         vector_doc = prepare_document_for_vector_store(expense_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "expense", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "expense", vector_doc)
         
         logger.info(f"Expense added for user: {user_id}")
         
@@ -360,7 +364,7 @@ async def add_investment(
         vector_doc = prepare_document_for_vector_store(investment_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "investment", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "investment", vector_doc)
         
         logger.info(f"Investment added for user: {user_id}")
         
@@ -520,7 +524,7 @@ async def add_loan(
         vector_doc = prepare_document_for_vector_store(loan_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "loan", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "loan", vector_doc)
         
         logger.info(f"Loan added for user: {user_id}")
         
@@ -676,7 +680,7 @@ async def add_insurance(
         vector_doc = prepare_document_for_vector_store(insurance_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "insurance", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "insurance", vector_doc)
         
         logger.info(f"Insurance added for user: {user_id}")
         
@@ -761,7 +765,7 @@ async def create_budget(
         vector_doc = prepare_document_for_vector_store(budget_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "budget", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "budget", vector_doc)
         
         logger.info(f"Budget created for user: {user_id}")
         
@@ -836,7 +840,7 @@ async def create_goal(
         vector_doc = prepare_document_for_vector_store(goal_data.dict())
         vector_doc["user_id"] = user_id
         vector_doc["created_at"] = datetime.utcnow()
-        await vector_store.add_user_data(user_id, "goal", vector_doc)
+        await _get_vector_store().add_user_data(user_id, "goal", vector_doc)
         
         logger.info(f"Goal created for user: {user_id}")
         

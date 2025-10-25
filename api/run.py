@@ -4,19 +4,20 @@ Minimal startup script for Render - checks environment before starting
 """
 import os
 import sys
+import traceback
 
 def check_environment():
     """Check critical environment variables"""
-    print("=" * 60)
-    print("🚀 ClariFi AI - Startup Check")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("🚀 ClariFi AI - Startup Check", flush=True)
+    print("=" * 60, flush=True)
     
     # Check PORT
     port = os.getenv("PORT")
     if port:
-        print(f"✅ PORT: {port}")
+        print(f"✅ PORT: {port}", flush=True)
     else:
-        print("⚠️  PORT not set, using default 8000")
+        print("⚠️  PORT not set, using default 8000", flush=True)
         os.environ["PORT"] = "8000"
     
     # Check MongoDB
@@ -24,38 +25,39 @@ def check_environment():
     if mongodb_url:
         # Mask the password for security
         masked = mongodb_url.split("@")[1] if "@" in mongodb_url else "configured"
-        print(f"✅ MONGODB_URL: ...@{masked}")
+        print(f"✅ MONGODB_URL: ...@{masked}", flush=True)
     else:
-        print("⚠️  MONGODB_URL not set - database features will not work")
+        print("⚠️  MONGODB_URL not set - database features will not work", flush=True)
     
     # Check Gemini API Key
     gemini_key = os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        print(f"✅ GEMINI_API_KEY: {gemini_key[:10]}...")
+        print(f"✅ GEMINI_API_KEY: {gemini_key[:10]}...", flush=True)
     else:
-        print("⚠️  GEMINI_API_KEY not set - AI features will not work")
+        print("⚠️  GEMINI_API_KEY not set - AI features will not work", flush=True)
     
     # Check JWT Secret
     jwt_secret = os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY")
     if jwt_secret and len(jwt_secret) >= 32:
-        print(f"✅ JWT_SECRET_KEY: configured ({len(jwt_secret)} chars)")
+        print(f"✅ JWT_SECRET_KEY: configured ({len(jwt_secret)} chars)", flush=True)
     else:
-        print("⚠️  JWT_SECRET_KEY not set or too short")
+        print("⚠️  JWT_SECRET_KEY not set or too short", flush=True)
     
-    print("=" * 60)
-    print()
+    print("=" * 60, flush=True)
+    print(flush=True)
 
 if __name__ == "__main__":
-    check_environment()
-    
-    # Now start uvicorn
-    import uvicorn
-    
-    port = int(os.getenv("PORT", 8000))
-    print(f"🎬 Starting uvicorn on 0.0.0.0:{port}")
-    print()
-    
     try:
+        print("🔧 Starting ClariFi AI API...", flush=True)
+        check_environment()
+        
+        # Now start uvicorn
+        import uvicorn
+        
+        port = int(os.getenv("PORT", 8000))
+        print(f"🎬 Starting uvicorn on 0.0.0.0:{port}", flush=True)
+        print(flush=True)
+        
         uvicorn.run(
             "main:app",
             host="0.0.0.0",
@@ -64,5 +66,8 @@ if __name__ == "__main__":
             access_log=False
         )
     except Exception as e:
-        print(f"❌ Failed to start: {e}")
+        print(f"❌ FATAL ERROR: {e}", flush=True)
+        print("=" * 60, flush=True)
+        traceback.print_exc()
+        print("=" * 60, flush=True)
         sys.exit(1)

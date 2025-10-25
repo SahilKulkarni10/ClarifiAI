@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from models import ChatMessage, ChatResponse
 from auth import get_current_user
-from rag_system import vector_store, finance_scraper
+from rag_system import get_vector_store, get_finance_scraper
 from stock_utils import stock_fetcher
 import logging
 import json
@@ -19,6 +19,9 @@ async def chat_with_ai(
     """Chat with AI assistant"""
     try:
         user_id = current_user["sub"]
+        
+        # Get vector store instance (lazy loaded)
+        vector_store = get_vector_store()
         
         # Generate AI response using RAG
         response_data = await vector_store.generate_response(user_id, chat_data.message)
@@ -43,6 +46,9 @@ async def chat_with_ai_stream(
     async def generate_stream():
         try:
             user_id = current_user["sub"]
+            
+            # Get vector store instance (lazy loaded)
+            vector_store = get_vector_store()
             
             # Generate AI response using RAG
             response_data = await vector_store.generate_response(user_id, chat_data.message)
@@ -86,8 +92,11 @@ async def refresh_knowledge_base(current_user: dict = Depends(get_current_user))
     try:
         logger.info(f"Knowledge base refresh triggered by user: {current_user['sub']}")
         
+        # Get finance scraper instance (lazy loaded)
+        scraper = get_finance_scraper()
+        
         # Refresh knowledge base with real-time data
-        success = await finance_scraper.refresh_knowledge_base()
+        success = await scraper.refresh_knowledge_base()
         
         if success:
             return {

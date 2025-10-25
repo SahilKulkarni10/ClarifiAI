@@ -1536,8 +1536,28 @@ class FinanceDataScraper:
             except Exception as e:
                 logger.error(f"Error storing knowledge item: {e}")
 
-# Initialize global instances
-vector_store = VectorStore()
-finance_scraper = FinanceDataScraper()
-finance_scraper.set_vector_store(vector_store)
+# Initialize global instances (lazily)
+vector_store = None
+finance_scraper = None
+
+def get_vector_store():
+    """Get or create vector store instance"""
+    global vector_store
+    if vector_store is None:
+        logger.info("Initializing VectorStore...")
+        vector_store = VectorStore()
+        logger.info("VectorStore initialized")
+    return vector_store
+
+def get_finance_scraper():
+    """Get or create finance scraper instance"""
+    global finance_scraper, vector_store
+    if finance_scraper is None:
+        logger.info("Initializing FinanceDataScraper...")
+        finance_scraper = FinanceDataScraper()
+        if vector_store is None:
+            vector_store = get_vector_store()
+        finance_scraper.set_vector_store(vector_store)
+        logger.info("FinanceDataScraper initialized")
+    return finance_scraper
 
