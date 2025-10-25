@@ -19,6 +19,9 @@ class Settings:
     # Vector DB
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_data")
     
+    # Embedding Settings
+    USE_LITE_EMBEDDINGS: bool = os.getenv("USE_LITE_EMBEDDINGS", "true").lower() == "true"
+    
     # API Settings
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))

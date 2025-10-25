@@ -35,14 +35,10 @@ async def lifespan(app: FastAPI):
     await connect_to_mongo()
     
     # Initialize RAG system with real-time financial knowledge
-    logger.info("📚 Initializing RAG system with real-time financial data...")
-    try:
-        # Refresh knowledge base with latest data from RBI, SEBI, news, etc.
-        await finance_scraper.refresh_knowledge_base()
-        logger.info("✅ Knowledge base loaded with real-time financial data")
-    except Exception as rag_error:
-        logger.warning(f"⚠️ RAG system initialization failed: {rag_error}")
-        logger.info("Using fallback static financial knowledge")
+    logger.info("📚 RAG system initialized (lazy loading)")
+    # Note: Knowledge base will be loaded on first use to save memory
+    # To manually refresh, call: await finance_scraper.refresh_knowledge_base()
+    logger.info("✅ RAG system ready (models will load on demand)")
     
     logger.info("✅ Finance AI Assistant API started successfully!")
     

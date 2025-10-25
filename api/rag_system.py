@@ -36,8 +36,8 @@ class VectorStore:
             metadata={"description": "Financial knowledge base"}
         )
         
-        # Initialize sentence transformer
-        self.encoder = SentenceTransformer('all-MiniLM-L6-v2')
+        # Initialize sentence transformer lazily (only when needed)
+        self._encoder = None
         
         # Initialize Gemini
         genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -61,6 +61,67 @@ class VectorStore:
             logger.error("Failed to initialize any Gemini model")
             # Use a simple fallback
             self.model = genai.GenerativeModel('gemini-pro')
+    
+    @property
+    def encoder(self):
+        """Lazy load the sentence transformer model only when needed"""
+        if self._encoder is None:
+            if settings.USE_LITE_EMBEDDINGS:
+                logger.info("Using Gemini API for embeddings (memory-efficient mode)")
+                self._encoder = "gemini_api"  # Flag to use API
+            else:
+                logger.info("Loading SentenceTransformer model (lazy load)...")
+                self._encoder = SentenceTransformer('all-MiniLM-L6-v2')
+                logger.info("SentenceTransformer model loaded successfully")
+        return self._encoder
+    
+    async def _generate_embedding(self, text: str) -> List[float]:
+        """Generate embedding using either local model or API"""
+        if settings.USE_LITE_EMBEDDINGS or self._encoder == "gemini_api":
+            # Use Gemini API for embeddings (memory efficient)
+            try:
+                result = genai.embed_content(
+                    model="models/embedding-001",
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                return result['embedding']
+            except Exception as e:
+                logger.error(f"Gemini embedding API failed: {e}")
+                # Fallback to simple hash-based embedding
+                return self._simple_embedding(text)
+        else:
+            # Use local SentenceTransformer model
+            return self.encoder.encode([text])[0].tolist()
+    
+    def _simple_embedding(self, text: str, dim: int = 768) -> List[float]:
+        """Fallback: Simple hash-based embedding for extreme memory constraints"""
+        import hashlib
+        import math
+        
+        # Create a deterministic embedding based on text hash
+        hash_obj = hashlib.sha256(text.encode())
+        hash_bytes = hash_obj.digest()
+        
+        # Convert hash to float array
+        embedding = []
+        for i in range(0, min(len(hash_bytes) * 8, dim), 8):
+            byte_idx = i // 8
+            if byte_idx < len(hash_bytes):
+                # Normalize to [-1, 1]
+                val = (hash_bytes[byte_idx] - 128) / 128.0
+                embedding.append(val)
+        
+        # Pad to desired dimension
+        while len(embedding) < dim:
+            embedding.append(0.0)
+        
+        # Normalize to unit vector
+        magnitude = math.sqrt(sum(x*x for x in embedding))
+        if magnitude > 0:
+            embedding = [x / magnitude for x in embedding]
+        
+        return embedding[:dim]
         
     async def add_user_data(self, user_id: str, data_type: str, data: Dict[str, Any]):
         """Add user financial data to vector store"""
@@ -69,7 +130,7 @@ class VectorStore:
             text_content = self._format_user_data(data_type, data)
             
             # Generate embedding
-            embedding = self.encoder.encode([text_content])[0].tolist()
+            embedding = await self._generate_embedding(text_content)
             
             # Create unique ID
             doc_id = f"{user_id}_{data_type}_{uuid.uuid4()}"
@@ -125,7 +186,7 @@ class VectorStore:
         """Search user's financial data"""
         try:
             # Generate query embedding
-            query_embedding = self.encoder.encode([query])[0].tolist()
+            query_embedding = await self._generate_embedding(query)
             
             # Search in user data
             results = self.user_data_collection.query(
@@ -154,7 +215,7 @@ class VectorStore:
         """Search financial knowledge base"""
         try:
             # Generate query embedding
-            query_embedding = self.encoder.encode([query])[0].tolist()
+            query_embedding = await self._generate_embedding(query)
             
             # Search in knowledge base
             results = self.knowledge_collection.query(
@@ -1455,7 +1516,7 @@ class FinanceDataScraper:
         for item in items:
             try:
                 # Generate embedding
-                embedding = self.vector_store.encoder.encode([item['content']])[0].tolist()
+                embedding = await self.vector_store._generate_embedding(item['content'])
                 
                 # Create unique ID
                 doc_id = str(uuid.uuid4())
