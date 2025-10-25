@@ -51,6 +51,16 @@ if __name__ == "__main__":
         print("🔧 Starting ClariFi AI API...", flush=True)
         check_environment()
         
+        # Test if we can import main.app without errors
+        print("📦 Testing app import...", flush=True)
+        try:
+            from main import app
+            print("✅ App imported successfully!", flush=True)
+        except Exception as import_error:
+            print(f"❌ FAILED to import app: {import_error}", flush=True)
+            traceback.print_exc()
+            sys.exit(1)
+        
         # Now start uvicorn
         import uvicorn
         
@@ -59,7 +69,7 @@ if __name__ == "__main__":
         print(flush=True)
         
         uvicorn.run(
-            "main:app",
+            app,  # Pass the app object directly instead of string
             host="0.0.0.0",
             port=port,
             log_level="info",
