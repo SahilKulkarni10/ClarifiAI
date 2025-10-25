@@ -1,0 +1,21 @@
+services:
+  # Backend API
+  - type: web
+    name: clarifi-ai-api
+    env: python
+    region: oregon
+    rootDir: api
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.4"
+      - key: PORT
+        generateValue: true
+      - key: ENVIRONMENT
+        value: "production"
+      - key: USE_LITE_EMBEDDINGS
+        value: "true"
+      - key: API_HOST
+        value: "0.0.0.0"
+    healthCheckPath: /health
