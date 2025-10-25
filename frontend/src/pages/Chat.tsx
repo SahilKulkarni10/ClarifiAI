@@ -120,6 +120,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isPausedRef = useRef(false); // Use ref to avoid closure issues
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -149,12 +150,20 @@ export default function ChatPage() {
   const streamResponse = (fullText: string): Promise<void> => {
     return new Promise((resolve) => {
       setIsStreaming(true);
+      setIsStreamingPaused(false);
+      isPausedRef.current = false; // Reset pause ref at the start
       const words = fullText.split(' ');
       let currentIndex = 0;
       let currentText = '';
 
       const streamWord = () => {
-        if (isStreamingPaused) {
+        // Clear any existing timeout
+        if (streamingTimeoutRef.current) {
+          clearTimeout(streamingTimeoutRef.current);
+        }
+
+        // Check the ref value instead of state
+        if (isPausedRef.current) {
           // If paused, check again after a short delay
           streamingTimeoutRef.current = setTimeout(streamWord, 100);
           return;
@@ -168,7 +177,12 @@ export default function ChatPage() {
         } else {
           setStreamingMessage('');
           setIsStreamingPaused(false);
+          isPausedRef.current = false;
           setIsStreaming(false);
+          if (streamingTimeoutRef.current) {
+            clearTimeout(streamingTimeoutRef.current);
+            streamingTimeoutRef.current = null;
+          }
           resolve();
         }
       };
@@ -232,6 +246,7 @@ export default function ChatPage() {
 
   const toggleStreamingPause = () => {
     setIsStreamingPaused(!isStreamingPaused);
+    isPausedRef.current = !isPausedRef.current; // Update ref along with state
   };
 
   const suggestions = [
@@ -361,10 +376,37 @@ export default function ChatPage() {
                       <div className="text-sm leading-relaxed">
                         {formatMessage(streamingMessage)}
                       </div>
-                      <div className="mt-2 flex gap-1">
-                        <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
-                        <div className="h-2 w-2 rounded-full bg-primary animate-pulse delay-75"></div>
-                        <div className="h-2 w-2 rounded-full bg-primary animate-pulse delay-150"></div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="flex gap-1">
+                          {!isStreamingPaused && (
+                            <>
+                              <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                              <div className="h-2 w-2 rounded-full bg-primary animate-pulse delay-75"></div>
+                              <div className="h-2 w-2 rounded-full bg-primary animate-pulse delay-150"></div>
+                            </>
+                          )}
+                          {isStreamingPaused && (
+                            <span className="text-xs text-muted-foreground">Paused</span>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={toggleStreamingPause}
+                          className="h-7 gap-1.5 text-xs hover:bg-primary/10"
+                        >
+                          {isStreamingPaused ? (
+                            <>
+                              <Play className="h-3 w-3" />
+                              Resume
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="h-3 w-3" />
+                              Pause
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </div>

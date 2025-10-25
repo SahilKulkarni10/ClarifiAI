@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
 import logging
+import os
+import sys
 
 # Import configuration and database
 from config import settings
@@ -180,10 +182,20 @@ async def general_exception_handler(request, exc):
     )
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host=settings.API_HOST,
-        port=settings.API_PORT,
-        reload=True,
-        log_level="info"
-    )
+    import sys
+    port = int(os.getenv("PORT", settings.API_PORT))
+    host = settings.API_HOST
+    
+    logger.info(f"🚀 Starting server on {host}:{port}")
+    
+    try:
+        uvicorn.run(
+            "main:app",
+            host=host,
+            port=port,
+            reload=settings.ENVIRONMENT == "development",
+            log_level="info"
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to start server: {e}")
+        sys.exit(1)
