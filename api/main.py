@@ -34,6 +34,8 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Finance AI Assistant API...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"MongoDB URI configured: {'Yes' if settings.MONGODB_URI else 'No'}")
+    logger.info(f"Port: {os.getenv('PORT', settings.API_PORT)}")
+    logger.info(f"Host: {settings.API_HOST}")
     
     # Connect to MongoDB (with error handling for deployment)
     try:
@@ -50,6 +52,7 @@ async def lifespan(app: FastAPI):
     logger.info("✅ RAG system ready (models will load on demand)")
     
     logger.info("✅ Finance AI Assistant API started successfully!")
+    logger.info(f"🌐 Server should be accessible on port {os.getenv('PORT', settings.API_PORT)}")
     
     yield
     
@@ -106,7 +109,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],

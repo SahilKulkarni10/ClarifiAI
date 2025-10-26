@@ -8,7 +8,8 @@ from models import (
 )
 from auth import get_current_user
 from database import get_database
-from rag_system import get_vector_store
+# Lazy import to avoid loading heavy dependencies at startup
+# from rag_system import get_vector_store
 from utils import prepare_document_for_mongo, prepare_document_for_vector_store
 from datetime import datetime, date
 import logging
@@ -18,6 +19,8 @@ router = APIRouter(prefix="/finance", tags=["Finance Data"])
 
 # Helper to get vector store instance lazily
 def _get_vector_store():
+    """Lazy import vector store to avoid loading heavy dependencies at startup"""
+    from rag_system import get_vector_store
     return get_vector_store()
 
 # Income Routes

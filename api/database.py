@@ -17,21 +17,30 @@ async def connect_to_mongo():
         if not settings.MONGODB_URI or settings.MONGODB_URI == "mongodb://localhost:27017":
             raise Exception("MongoDB URI not configured or using localhost")
         
-        # Create MongoDB client without explicit SSL settings to use defaults
+        # Create MongoDB client with strict timeouts to prevent hanging
         mongodb.client = AsyncIOMotorClient(
             settings.MONGODB_URI,
-            serverSelectionTimeoutMS=5000,  # 5 second timeout
-            connectTimeoutMS=5000
+            serverSelectionTimeoutMS=3000,  # 3 second timeout
+            connectTimeoutMS=3000,
+            socketTimeoutMS=3000
         )
         mongodb.database = mongodb.client[settings.DATABASE_NAME]
         
-        # Test connection with timeout
-        await mongodb.client.admin.command('ping')
+        # Test connection with timeout - wrap in asyncio.wait_for
+        await asyncio.wait_for(
+            mongodb.client.admin.command('ping'),
+            timeout=3.0
+        )
         print("✅ Connected to MongoDB Atlas!")
         
-        # Create indexes
-        await create_indexes()
+        # Create indexes (non-blocking)
+        asyncio.create_task(create_indexes())
         
+    except asyncio.TimeoutError:
+        print(f"❌ MongoDB connection timeout (3s)")
+        print("⚠️  API will start without database - set MONGODB_URL environment variable")
+        mongodb.client = None
+        mongodb.database = None
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
         print("⚠️  API will start without database - set MONGODB_URL environment variable")

@@ -30,13 +30,18 @@ class Settings:
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
     # CORS
-    def get_cors_origins(self):
+    @property
+    def cors_origins(self):
         """Get CORS origins from environment or use defaults"""
         cors_env = os.getenv("CORS_ORIGINS", "")
         if cors_env:
             if cors_env == "*":
                 return ["*"]
             return [origin.strip() for origin in cors_env.split(",")]
+        
+        # Production defaults - allow all in production if not specified
+        if self.ENVIRONMENT == "production":
+            return ["*"]
         
         # Default development origins
         return [
@@ -48,13 +53,9 @@ class Settings:
             "http://[::]:8080",
         ]
     
-    CORS_ORIGINS: list = None  # Will be set dynamically
-    
     # External APIs
     RBI_BASE_URL: str = "https://www.rbi.org.in"
     SEBI_BASE_URL: str = "https://www.sebi.gov.in"
     ECONOMIC_TIMES_URL: str = "https://economictimes.indiatimes.com"
 
 settings = Settings()
-# Set CORS origins dynamically
-settings.CORS_ORIGINS = settings.get_cors_origins()

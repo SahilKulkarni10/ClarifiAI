@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from models import ChatMessage, ChatResponse
 from auth import get_current_user
-from rag_system import get_vector_store, get_finance_scraper
+# Lazy import - only load when needed
+# from rag_system import get_vector_store, get_finance_scraper
 from stock_utils import stock_fetcher
 import logging
 import json
@@ -10,6 +11,16 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["AI Chat"])
+
+def lazy_get_vector_store():
+    """Lazy import vector store to avoid loading heavy dependencies at startup"""
+    from rag_system import get_vector_store
+    return get_vector_store()
+
+def lazy_get_finance_scraper():
+    """Lazy import finance scraper to avoid loading heavy dependencies at startup"""
+    from rag_system import get_finance_scraper
+    return get_finance_scraper()
 
 @router.post("/message", response_model=ChatResponse)
 async def chat_with_ai(
@@ -21,7 +32,7 @@ async def chat_with_ai(
         user_id = current_user["sub"]
         
         # Get vector store instance (lazy loaded)
-        vector_store = get_vector_store()
+        vector_store = lazy_get_vector_store()
         
         # Generate AI response using RAG
         response_data = await vector_store.generate_response(user_id, chat_data.message)
@@ -48,7 +59,7 @@ async def chat_with_ai_stream(
             user_id = current_user["sub"]
             
             # Get vector store instance (lazy loaded)
-            vector_store = get_vector_store()
+            vector_store = lazy_get_vector_store()
             
             # Generate AI response using RAG
             response_data = await vector_store.generate_response(user_id, chat_data.message)
@@ -93,7 +104,7 @@ async def refresh_knowledge_base(current_user: dict = Depends(get_current_user))
         logger.info(f"Knowledge base refresh triggered by user: {current_user['sub']}")
         
         # Get finance scraper instance (lazy loaded)
-        scraper = get_finance_scraper()
+        scraper = lazy_get_finance_scraper()
         
         # Refresh knowledge base with real-time data
         success = await scraper.refresh_knowledge_base()

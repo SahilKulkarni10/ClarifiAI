@@ -1536,28 +1536,23 @@ class FinanceDataScraper:
             except Exception as e:
                 logger.error(f"Error storing knowledge item: {e}")
 
-# Initialize global instances (lazily)
-vector_store = None
-finance_scraper = None
+# Lazy-loaded global instances
+_vector_store = None
+_finance_scraper = None
 
 def get_vector_store():
-    """Get or create vector store instance"""
-    global vector_store
-    if vector_store is None:
-        logger.info("Initializing VectorStore...")
-        vector_store = VectorStore()
-        logger.info("VectorStore initialized")
-    return vector_store
+    """Get or create vector store instance (lazy loading)"""
+    global _vector_store
+    if _vector_store is None:
+        logger.info("Initializing VectorStore (first use)...")
+        _vector_store = VectorStore()
+    return _vector_store
 
 def get_finance_scraper():
-    """Get or create finance scraper instance"""
-    global finance_scraper, vector_store
-    if finance_scraper is None:
-        logger.info("Initializing FinanceDataScraper...")
-        finance_scraper = FinanceDataScraper()
-        if vector_store is None:
-            vector_store = get_vector_store()
-        finance_scraper.set_vector_store(vector_store)
-        logger.info("FinanceDataScraper initialized")
-    return finance_scraper
+    """Get or create finance scraper instance (lazy loading)"""
+    global _finance_scraper
+    if _finance_scraper is None:
+        logger.info("Initializing FinanceDataScraper (first use)...")
+        _finance_scraper = FinanceDataScraper()
+    return _finance_scraper
 
