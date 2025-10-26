@@ -51,29 +51,22 @@ if __name__ == "__main__":
         print("🔧 Starting ClariFi AI API...", flush=True)
         check_environment()
         
-        # Test if we can import main.app without errors
-        print("📦 Testing app import...", flush=True)
-        try:
-            from main import app
-            print("✅ App imported successfully!", flush=True)
-        except Exception as import_error:
-            print(f"❌ FAILED to import app: {import_error}", flush=True)
-            traceback.print_exc()
-            sys.exit(1)
-        
-        # Now start uvicorn
+        # Import uvicorn and start immediately - Render needs to see port binding FAST
         import uvicorn
         
         port = int(os.getenv("PORT", 8000))
         print(f"🎬 Starting uvicorn on 0.0.0.0:{port}", flush=True)
         print(flush=True)
         
+        # Use string import path so uvicorn binds port BEFORE app initialization
+        # This makes Render's port scanner happy
         uvicorn.run(
-            app,  # Pass the app object directly instead of string
+            "main:app",  # String path - uvicorn imports this itself after binding
             host="0.0.0.0",
             port=port,
             log_level="info",
-            access_log=False
+            access_log=True,
+            timeout_keep_alive=75  # Keep connections alive longer for Render
         )
     except Exception as e:
         print(f"❌ FATAL ERROR: {e}", flush=True)
