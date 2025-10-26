@@ -21,6 +21,8 @@ services:
         value: "true"
       - key: API_HOST
         value: "0.0.0.0"
+      - key: CHROMA_PERSIST_DIRECTORY
+        value: "./chroma_data"
       # Add your secret environment variables in Render Dashboard:
       # - MONGODB_URL or MONGODB_URI
       # - JWT_SECRET
