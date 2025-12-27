@@ -93,12 +93,18 @@ async def get_profile(
     
     Requires authentication via Bearer token.
     """
+    # Handle created_at - convert datetime to string if needed
+    created_at = current_user.get("created_at", "")
+    if hasattr(created_at, 'isoformat'):
+        created_at = created_at.isoformat()
+    
     return UserProfile(
         id=str(current_user["_id"]),
         email=current_user["email"],
+        name=current_user.get("name") or current_user.get("full_name"),
         full_name=current_user.get("full_name"),
         phone=current_user.get("phone"),
-        created_at=current_user.get("created_at", ""),
+        created_at=created_at,
         preferences=current_user.get("preferences", {})
     )
 

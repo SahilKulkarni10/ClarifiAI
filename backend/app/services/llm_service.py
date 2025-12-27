@@ -466,6 +466,10 @@ Always be friendly and end with actionable advice."""
             stock_recs = financial_data["stock_recommendations"]
             risk_profile = financial_data.get("risk_profile", "moderate")
             
+            # Handle case when real-time data is unavailable
+            if stock_recs.get("error") or stock_recs.get("data_source") == "unavailable":
+                return "I'm currently unable to fetch real-time stock market data. Please check your internet connection and try again in a few moments. Once connected, I'll provide personalized stock recommendations based on your risk profile."
+            
             response_parts.append(f"Based on your {risk_profile} risk profile, here are stocks to consider:\n")
             
             if stock_recs.get("recommended_stocks"):

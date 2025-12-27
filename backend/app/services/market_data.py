@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 from cachetools import TTLCache
 import httpx
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
 from loguru import logger
 
 try:
@@ -18,6 +20,9 @@ try:
 except ImportError:
     YFINANCE_AVAILABLE = False
     logger.warning("yfinance not available. Stock features will be limited.")
+
+# Thread pool for running synchronous yfinance calls
+_executor = ThreadPoolExecutor(max_workers=5)
 
 from app.core.config import settings
 
@@ -35,6 +40,18 @@ class MarketDataService:
         # Cache with TTL (time-to-live) in seconds
         self.cache = TTLCache(maxsize=1000, ttl=settings.cache_ttl_seconds)
         self.http_client = None
+    
+    def _fetch_ticker_info(self, ticker_symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Synchronous method to fetch ticker info from yfinance.
+        Called in a thread pool to avoid blocking the event loop.
+        """
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            return ticker.info
+        except Exception as e:
+            logger.error(f"Error fetching ticker info for {ticker_symbol}: {e}")
+            return None
     
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -311,13 +328,14 @@ class MarketDataService:
     # REAL-TIME STOCK DATA (Yahoo Finance - Free, No API Key)
     # =========================================================================
     
-    async def get_stock_price(self, symbol: str, exchange: str = "NS") -> Optional[Dict[str, Any]]:
+    async def get_stock_price(self, symbol: str, exchange: str = "NS", retry_count: int = 0) -> Optional[Dict[str, Any]]:
         """
         Get real-time stock price and basic info.
         
         Args:
-            symbol: Stock symbol (e.g., "RELIANCE", "TCS")
-            exchange: Exchange suffix - "NS" for NSE, "BO" for BSE
+            symbol: Stock symbol (e.g., "RELIANCE", "TCS", "AAPL")
+            exchange: Exchange suffix - "NS" for NSE, "BO" for BSE, "" for US stocks
+            retry_count: Internal counter for retries
             
         Returns:
             Dictionary with stock data or None if not found
@@ -326,6 +344,10 @@ class MarketDataService:
             logger.error("yfinance not available for stock data")
             return None
         
+        # US stocks don't need exchange suffix
+        us_stocks = ["AAPL", "GOOGL", "MSFT", "AMZN", "META", "TSLA", "NVDA", "NFLX"]
+        is_us_stock = symbol in us_stocks
+        
         cache_key = f"stock_{symbol}_{exchange}"
         
         if cache_key in self.cache:
@@ -333,25 +355,58 @@ class MarketDataService:
             logger.debug(f"Using cached data for {symbol}")
             return cached_data
         
+        max_retries = 2
+        
         try:
-            ticker_symbol = f"{symbol}.{exchange}"
+            # US stocks don't need exchange suffix
+            ticker_symbol = symbol if is_us_stock else f"{symbol}.{exchange}"
             logger.debug(f"Fetching stock data for {ticker_symbol}...")
-            ticker = yf.Ticker(ticker_symbol)
-            info = ticker.info
+            
+            # Run yfinance in a thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(
+                _executor,
+                functools.partial(self._fetch_ticker_info, ticker_symbol)
+            )
             
             if not info or info.get("regularMarketPrice") is None:
-                # Try BSE if NSE fails
-                if exchange == "NS":
-                    logger.debug(f"{symbol}.NS failed, trying .BO...")
-                    await asyncio.sleep(0.5)  # Small delay
-                    return await self.get_stock_price(symbol, "BO")
-                # Return None if both fail - we don't want hardcoded data
-                logger.warning(f"Could not fetch real-time data for {symbol} on {exchange}")
+                # Retry with delay if first attempt fails
+                if retry_count < max_retries:
+                    logger.debug(f"{ticker_symbol} attempt {retry_count + 1} failed, retrying...")
+                    await asyncio.sleep(0.5)
+                    return await self.get_stock_price(symbol, exchange, retry_count + 1)
+                
+                # Try BSE if NSE fails after retries (only for Indian stocks)
+                if exchange == "NS" and not is_us_stock:
+                    logger.debug(f"{symbol}.NS failed after retries, trying .BO...")
+                    await asyncio.sleep(0.3)
+                    return await self.get_stock_price(symbol, "BO", 0)
+                
+                # Return None if both fail - only real-time data is returned
+                logger.warning(f"Could not fetch real-time data for {symbol} after {max_retries + 1} attempts")
                 return None
             
             # Handle None values gracefully
             current_price = info.get("regularMarketPrice") or info.get("currentPrice") or 0
             prev_close = info.get("previousClose") or current_price
+            
+            # Calculate dividend yield - use trailingAnnualDividendYield first (more reliable)
+            # yfinance dividendYield can be unreliable for Indian stocks
+            # If trailingAnnualDividendYield is available and non-zero, use it
+            # Otherwise, calculate from trailingAnnualDividendRate if available
+            trailing_yield = info.get("trailingAnnualDividendYield")
+            if trailing_yield and trailing_yield > 0:
+                dividend_yield_pct = trailing_yield * 100
+            elif info.get("trailingAnnualDividendRate") and current_price > 0:
+                # Calculate yield from annual dividend rate
+                dividend_yield_pct = (info.get("trailingAnnualDividendRate") / current_price) * 100
+            else:
+                # Fallback to dividendYield but cap at 10% to filter bad data
+                raw_yield = info.get("dividendYield") or 0
+                dividend_yield_pct = min(raw_yield * 100, 10.0) if raw_yield else 0
+            
+            # Final sanity check - cap at 15% max
+            dividend_yield_pct = min(dividend_yield_pct, 15.0)
             
             result = {
                 "symbol": symbol,
@@ -366,7 +421,7 @@ class MarketDataService:
                 "market_cap": info.get("marketCap") or 0,
                 "pe_ratio": info.get("trailingPE") or info.get("forwardPE"),
                 "pb_ratio": info.get("priceToBook"),
-                "dividend_yield": (info.get("dividendYield") or 0) * 100,
+                "dividend_yield": round(dividend_yield_pct, 2),
                 "52_week_high": info.get("fiftyTwoWeekHigh") or current_price,
                 "52_week_low": info.get("fiftyTwoWeekLow") or current_price,
                 "sector": info.get("sector") or "Unknown",
@@ -378,13 +433,16 @@ class MarketDataService:
             }
             
             self.cache[cache_key] = result
-            logger.info(f"✓ Real-time data: {symbol} = ₹{result['current_price']:.2f} (P/E: {result.get('pe_ratio', 'N/A')})")
+            
+            # Log with appropriate currency
+            currency = "$" if is_us_stock else "₹"
+            logger.info(f"✓ Real-time data: {symbol} = {currency}{result['current_price']:.2f} (P/E: {result.get('pe_ratio', 'N/A')})")
             return result
             
         except Exception as e:
             logger.error(f"Exception while fetching stock data for {symbol}: {str(e)}")
-            # Try BSE if we were trying NSE
-            if exchange == "NS":
+            # Try BSE if we were trying NSE (only for Indian stocks)
+            if exchange == "NS" and not is_us_stock:
                 await asyncio.sleep(0.5)
                 return await self.get_stock_price(symbol, "BO")
             return None  # Only return real-time data, no fallbacks
@@ -446,24 +504,93 @@ class MarketDataService:
             "fetched_at": datetime.utcnow().isoformat()
         }
         
+        # Common stock name mappings (company names to NSE symbols)
+        stock_name_mappings = {
+            "tcs": "TCS", "tata consultancy": "TCS", "tata consulting": "TCS",
+            "infosys": "INFY", "infy": "INFY",
+            "reliance": "RELIANCE", "ril": "RELIANCE",
+            "hdfc bank": "HDFCBANK", "hdfc": "HDFCBANK",
+            "icici bank": "ICICIBANK", "icici": "ICICIBANK",
+            "wipro": "WIPRO",
+            "hcl tech": "HCLTECH", "hcl": "HCLTECH",
+            "tech mahindra": "TECHM",
+            "itc": "ITC",
+            "hindustan unilever": "HINDUNILVR", "hul": "HINDUNILVR",
+            "sbi": "SBIN", "state bank": "SBIN",
+            "kotak": "KOTAKBANK", "kotak bank": "KOTAKBANK",
+            "axis bank": "AXISBANK", "axis": "AXISBANK",
+            "bharti airtel": "BHARTIARTL", "airtel": "BHARTIARTL",
+            "maruti": "MARUTI", "maruti suzuki": "MARUTI",
+            "tata motors": "TATAMOTORS",
+            "sun pharma": "SUNPHARMA",
+            "dr reddy": "DRREDDY", "dr. reddy": "DRREDDY",
+            "cipla": "CIPLA",
+            "coal india": "COALINDIA",
+            "power grid": "POWERGRID",
+            "ongc": "ONGC",
+            "ntpc": "NTPC",
+            "zomato": "ZOMATO",
+            "paytm": "PAYTM",
+            "nykaa": "NYKAA",
+            "nestle": "NESTLEIND",
+            "britannia": "BRITANNIA",
+            "bajaj auto": "BAJAJ-AUTO",
+            "hero motocorp": "HEROMOTOCO", "hero": "HEROMOTOCO",
+            "persistent": "PERSISTENT",
+            "polycab": "POLYCAB",
+            "trent": "TRENT",
+            "dixon": "DIXON",
+        }
+        
+        # US stock mappings
+        us_stock_mappings = {
+            "apple": "AAPL", "aapl": "AAPL",
+            "google": "GOOGL", "alphabet": "GOOGL", "googl": "GOOGL",
+            "microsoft": "MSFT", "msft": "MSFT",
+            "amazon": "AMZN", "amzn": "AMZN",
+            "meta": "META", "facebook": "META",
+            "tesla": "TSLA", "tsla": "TSLA",
+            "nvidia": "NVDA", "nvda": "NVDA",
+            "netflix": "NFLX", "nflx": "NFLX",
+        }
+        
         # If user asked about specific stocks or sectors
         if query:
             query_lower = query.lower()
             target_symbols = []
+            is_us_stock = False
+            
+            # First check for specific stock names/company names in query
+            for name, symbol in stock_name_mappings.items():
+                if name in query_lower:
+                    if symbol not in target_symbols:
+                        target_symbols.append(symbol)
+            
+            # Check for US stocks
+            for name, symbol in us_stock_mappings.items():
+                if name in query_lower:
+                    is_us_stock = True
+                    # For US stocks, we need to handle differently
+                    recommendations["is_us_stock"] = True
+                    recommendations["us_stock_note"] = f"You asked about {symbol}, which is a US stock. Indian investors can invest in US stocks through international mutual funds, ETFs like Motilal Oswal Nasdaq 100, or through platforms like INDmoney, Vested, or Groww that allow direct US stock purchases."
+                    # Still try to fetch the data
+                    target_symbols.append(symbol)
             
             # Check if query mentions specific sectors
-            for sector, symbols in stock_categories.items():
-                if sector in query_lower:
-                    target_symbols.extend(symbols[:5])
-                    break
+            if not target_symbols:
+                for sector, symbols in stock_categories.items():
+                    if sector in query_lower:
+                        target_symbols.extend(symbols[:5])
+                        break
             
-            # Check if query mentions specific stock
-            for sector, symbols in stock_categories.items():
-                for sym in symbols:
-                    if sym.lower() in query_lower:
-                        target_symbols.append(sym)
+            # Check if query mentions specific NSE symbol directly
+            if not target_symbols:
+                for sector, symbols in stock_categories.items():
+                    for sym in symbols:
+                        if sym.lower() in query_lower:
+                            target_symbols.append(sym)
             
-            # If no specific match, use default based on risk
+            # If no specific match, use default based on keywords or risk profile
             if not target_symbols:
                 if "dividend" in query_lower or "income" in query_lower:
                     target_symbols = stock_categories["dividend"][:5]
@@ -471,6 +598,14 @@ class MarketDataService:
                     target_symbols = stock_categories["growth"][:3] + stock_categories["mid_cap"][:3]
                 elif "safe" in query_lower or "conservative" in query_lower:
                     target_symbols = stock_categories["large_cap"][:5]
+                else:
+                    # Default: use risk profile based selection for generic stock queries
+                    if risk_profile == "conservative":
+                        target_symbols = stock_categories["large_cap"][:4] + stock_categories["dividend"][:3]
+                    elif risk_profile == "aggressive":
+                        target_symbols = stock_categories["mid_cap"][:4] + stock_categories["growth"][:3] + stock_categories["large_cap"][:2]
+                    else:  # moderate
+                        target_symbols = stock_categories["large_cap"][:4] + stock_categories["mid_cap"][:3]
         else:
             # Default selection based on risk profile
             if risk_profile == "conservative":
@@ -521,12 +656,12 @@ class MarketDataService:
         if failed_symbols:
             logger.warning(f"Failed to fetch data for {len(failed_symbols)} symbols: {', '.join(failed_symbols[:5])}")
         
-        # Check if we got real-time data - provide fallback recommendations
+        # Check if we got real-time data - no fallback, return empty with error message
         if not stock_data:
-            logger.warning("No real-time stock data available. Providing general recommendations.")
-            recommendations["recommended_stocks"] = self._get_fallback_recommendations(risk_profile)
-            recommendations["warning"] = "Real-time market data is temporarily unavailable. Showing general investment recommendations. Please try again later for live market prices."
-            recommendations["data_source"] = "static"
+            logger.error("No real-time stock data available. Cannot provide recommendations.")
+            recommendations["recommended_stocks"] = []
+            recommendations["error"] = "Unable to fetch real-time market data. Please check your internet connection and try again."
+            recommendations["data_source"] = "unavailable"
             return recommendations
         
         # Sort by a simple scoring mechanism
@@ -640,8 +775,15 @@ class MarketDataService:
             return self.cache[cache_key]
         
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            # Run yfinance in a thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(
+                _executor,
+                functools.partial(self._fetch_ticker_info, symbol)
+            )
+            
+            if not info:
+                return None
             
             result = {
                 "symbol": symbol,
@@ -721,118 +863,5 @@ class MarketDataService:
             "INDUSINDBK", "BPCL", "IOC", "TATACONSUM", "BAJAJFINSV", "SBILIFE"
         ]
     
-    def _get_fallback_recommendations(self, risk_profile: str = "moderate") -> List[Dict[str, Any]]:
-        """
-        Provide general stock recommendations when real-time data is unavailable.
-        
-        Args:
-            risk_profile: User's risk profile
-            
-        Returns:
-            List of general stock recommendations without live prices
-        """
-        if risk_profile == "conservative":
-            recommendations = [
-                {
-                    "symbol": "TCS",
-                    "name": "Tata Consultancy Services",
-                    "sector": "IT",
-                    "recommendation_reason": "Large-cap IT leader, stable dividend payer, defensive stock"
-                },
-                {
-                    "symbol": "HDFCBANK",
-                    "name": "HDFC Bank",
-                    "sector": "Banking",
-                    "recommendation_reason": "India's largest private bank, consistent performer, strong fundamentals"
-                },
-                {
-                    "symbol": "HINDUNILVR",
-                    "name": "Hindustan Unilever",
-                    "sector": "FMCG",
-                    "recommendation_reason": "Blue-chip FMCG stock, defensive play, regular dividends"
-                },
-                {
-                    "symbol": "ITC",
-                    "name": "ITC Limited",
-                    "sector": "FMCG",
-                    "recommendation_reason": "Diversified conglomerate, high dividend yield, stable operations"
-                },
-                {
-                    "symbol": "INFY",
-                    "name": "Infosys",
-                    "sector": "IT",
-                    "recommendation_reason": "Global IT services leader, strong fundamentals, quality management"
-                }
-            ]
-        elif risk_profile == "aggressive":
-            recommendations = [
-                {
-                    "symbol": "ZOMATO",
-                    "name": "Zomato",
-                    "sector": "Consumer Tech",
-                    "recommendation_reason": "Fast-growing food delivery platform, new-age tech stock"
-                },
-                {
-                    "symbol": "DIXON",
-                    "name": "Dixon Technologies",
-                    "sector": "Electronics",
-                    "recommendation_reason": "Beneficiary of PLI scheme, strong growth in electronics manufacturing"
-                },
-                {
-                    "symbol": "TRENT",
-                    "name": "Trent (Westside)",
-                    "sector": "Retail",
-                    "recommendation_reason": "Fast-growing retail chain, strong same-store sales growth"
-                },
-                {
-                    "symbol": "PERSISTENT",
-                    "name": "Persistent Systems",
-                    "sector": "IT",
-                    "recommendation_reason": "Mid-cap IT with strong growth, product engineering focus"
-                },
-                {
-                    "symbol": "POLYCAB",
-                    "name": "Polycab India",
-                    "sector": "Cables & Wires",
-                    "recommendation_reason": "Market leader in cables, infrastructure growth beneficiary"
-                }
-            ]
-        else:  # moderate
-            recommendations = [
-                {
-                    "symbol": "RELIANCE",
-                    "name": "Reliance Industries",
-                    "sector": "Diversified",
-                    "recommendation_reason": "India's largest company, diversified business, strong balance sheet"
-                },
-                {
-                    "symbol": "ICICIBANK",
-                    "name": "ICICI Bank",
-                    "sector": "Banking",
-                    "recommendation_reason": "Second-largest private bank, strong retail franchise, improving asset quality"
-                },
-                {
-                    "symbol": "BHARTIARTL",
-                    "name": "Bharti Airtel",
-                    "sector": "Telecom",
-                    "recommendation_reason": "Telecom leader, 5G rollout beneficiary, improving ARPU"
-                },
-                {
-                    "symbol": "MARUTI",
-                    "name": "Maruti Suzuki",
-                    "sector": "Auto",
-                    "recommendation_reason": "Market leader in passenger vehicles, strong distribution network"
-                },
-                {
-                    "symbol": "KOTAKBANK",
-                    "name": "Kotak Mahindra Bank",
-                    "sector": "Banking",
-                    "recommendation_reason": "Well-managed private bank, diversified business model"
-                }
-            ]
-        
-        return recommendations
-
-
 # Global instance
 market_data = MarketDataService()

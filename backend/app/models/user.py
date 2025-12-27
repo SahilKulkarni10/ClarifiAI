@@ -50,8 +50,11 @@ class UserProfile(BaseModel):
     """Model for user profile response."""
     id: str
     email: str
-    name: str
-    created_at: str
+    name: Optional[str] = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    created_at: Optional[str] = None
+    preferences: Optional[dict] = {}
 
 
 class UserProfileUpdate(BaseModel):
