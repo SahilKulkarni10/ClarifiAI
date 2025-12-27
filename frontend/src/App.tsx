@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { FloatingChatButton } from "@/components/FloatingChatButton";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
@@ -19,6 +20,8 @@ import AnalyticsPage from "./pages/Analytics";
 import ExpensesPage from "./pages/Expenses";
 import InsurancePage from "./pages/Insurance";
 import GoalsPage from "./pages/Goals";
+import SettingsPage from "./pages/Settings";
+import InsightsPage from "./pages/Insights";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +33,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <FloatingChatButton />
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
@@ -106,6 +110,22 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <AnalyticsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/insights"
+                element={
+                  <ProtectedRoute>
+                    <InsightsPage />
                   </ProtectedRoute>
                 }
               />

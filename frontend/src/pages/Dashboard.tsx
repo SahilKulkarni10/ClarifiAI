@@ -23,6 +23,15 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
+import CountUp from 'react-countup';
+import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useState } from 'react';
+import { OnboardingModal } from '@/components/OnboardingModal';
+import { ExpensePieChart } from '@/components/charts/ExpensePieChart';
+import { SavingsTrendChart } from '@/components/charts/SavingsTrendChart';
+import { InvestmentPerformanceChart } from '@/components/charts/InvestmentPerformanceChart';
+import { AIInsights } from '@/components/AIInsights';
 
 const DEMO_DASHBOARD: Dashboard = {
   total_income: 0,
@@ -36,10 +45,28 @@ const DEMO_DASHBOARD: Dashboard = {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { dashboard, loading, error, lastUpdated, refresh } = useRealtimeDashboard({
     refreshInterval: 30000, // Refresh every 30 seconds
     autoRefresh: true
   });
+  
+  // Get greeting based on time of day
+  const [greeting, setGreeting] = useState('');
+  
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting('Good morning');
+    else if (hour < 18) setGreeting('Good afternoon');
+    else setGreeting('Good evening');
+  }, []);
+
+  const handleOnboardingComplete = (step?: number) => {
+    // Navigate to specific page based on step
+    if (step === 0) navigate('/income');
+    else if (step === 1) navigate('/goals');
+    else if (step === 2) navigate('/chat');
+  };
 
   if (loading) {
     return (
@@ -79,8 +106,30 @@ export default function DashboardPage() {
       title="Financial Dashboard" 
       description="Your complete financial overview at a glance"
     >
+      {/* Onboarding Modal */}
+      <OnboardingModal onComplete={handleOnboardingComplete} />
+      {/* Personalized Greeting */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="mb-6"
+      >
+        <h1 className="text-3xl md:text-4xl font-bold mb-2">
+          {greeting}, {user?.name?.split(' ')[0] || 'there'} 👋
+        </h1>
+        <p className="text-muted-foreground">
+          Here's your financial overview for today
+        </p>
+      </motion.div>
+
       {/* Status Bar with Refresh */}
-      <div className="mb-6 flex items-center justify-between p-4 rounded-lg border border-border/40 bg-card/50 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="mb-6 flex items-center justify-between p-4 rounded-lg border border-border/40 bg-card/50 backdrop-blur-sm"
+      >
         <div className="flex items-center gap-4">
           {error ? (
             <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
@@ -103,76 +152,95 @@ export default function DashboardPage() {
           <RefreshCw className="h-4 w-4" />
           Refresh Now
         </Button>
-      </div>
+      </motion.div>
 
       {/* Quick Stats */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card className="border-border/40 bg-gradient-to-br from-green-500/10 via-background to-background hover:shadow-lg transition-all">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Income</CardTitle>
-            <div className="p-2 rounded-lg bg-green-500/20">
-              <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">₹{dashboardData.total_income.toLocaleString('en-IN')}</div>
-            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              <ArrowUpRight className="h-3 w-3" />
-              {dashboardData.counts.income} transactions
-            </p>
-          </CardContent>
-        </Card>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8"
+      >
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="border-border/40 bg-gradient-to-br from-green-500/10 via-background to-background hover:shadow-lg transition-all h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Income</CardTitle>
+              <div className="p-2 rounded-lg bg-green-500/20">
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-foreground">
+                ₹<CountUp end={dashboardData.total_income} duration={2} separator="," />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <ArrowUpRight className="h-3 w-3" />
+                {dashboardData.counts.income} transactions
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="border-border/40 bg-gradient-to-br from-red-500/10 via-background to-background hover:shadow-lg transition-all">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
-            <div className="p-2 rounded-lg bg-red-500/20">
-              <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">₹{dashboardData.total_expenses.toLocaleString('en-IN')}</div>
-            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              <ArrowDownRight className="h-3 w-3" />
-              {dashboardData.counts.expenses} transactions
-            </p>
-          </CardContent>
-        </Card>
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="border-border/40 bg-gradient-to-br from-red-500/10 via-background to-background hover:shadow-lg transition-all h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
+              <div className="p-2 rounded-lg bg-red-500/20">
+                <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-foreground">
+                ₹<CountUp end={dashboardData.total_expenses} duration={2} separator="," />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <ArrowDownRight className="h-3 w-3" />
+                {dashboardData.counts.expenses} transactions
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="border-border/40 bg-gradient-to-br from-blue-500/10 via-background to-background hover:shadow-lg transition-all">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Investments</CardTitle>
-            <div className="p-2 rounded-lg bg-blue-500/20">
-              <PiggyBank className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">₹{dashboardData.total_investments.toLocaleString('en-IN')}</div>
-            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              {dashboardData.counts.investments} holdings
-            </p>
-          </CardContent>
-        </Card>
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="border-border/40 bg-gradient-to-br from-blue-500/10 via-background to-background hover:shadow-lg transition-all h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Investments</CardTitle>
+              <div className="p-2 rounded-lg bg-blue-500/20">
+                <PiggyBank className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-foreground">
+                ₹<CountUp end={dashboardData.total_investments} duration={2} separator="," />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                {dashboardData.counts.investments} holdings
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="border-border/40 bg-gradient-to-br from-purple-500/10 via-background to-background hover:shadow-lg transition-all">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Net Worth</CardTitle>
-            <div className="p-2 rounded-lg bg-purple-500/20">
-              <DollarSign className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className={cn("text-3xl font-bold", netWorthTrend ? "text-green-600 dark:text-green-400" : "text-foreground")}>
-              ₹{dashboardData.net_worth.toLocaleString('en-IN')}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              {netWorthTrend ? <ArrowUpRight className="h-3 w-3 text-green-600" /> : <ArrowDownRight className="h-3 w-3" />}
-              {netWorthTrend ? 'Positive' : 'Building'} wealth
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="border-border/40 bg-gradient-to-br from-purple-500/10 via-background to-background hover:shadow-lg transition-all h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Net Worth</CardTitle>
+              <div className="p-2 rounded-lg bg-purple-500/20">
+                <DollarSign className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className={cn("text-3xl font-bold", netWorthTrend ? "text-green-600 dark:text-green-400" : "text-foreground")}>
+                ₹<CountUp end={dashboardData.net_worth} duration={2} separator="," />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                {netWorthTrend ? <ArrowUpRight className="h-3 w-3 text-green-600" /> : <ArrowDownRight className="h-3 w-3" />}
+                {netWorthTrend ? 'Positive' : 'Building'} wealth
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
 
       {/* Monthly Summary */}
       <div className="grid gap-6 md:grid-cols-3 mb-8">
@@ -218,6 +286,57 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Insights - Compact View */}
+      <div className="mb-8">
+        <AIInsights dashboardData={dashboardData} compact={true} />
+      </div>
+
+      {/* Interactive Charts */}
+      <div className="grid gap-6 lg:grid-cols-2 mb-8">
+        <ExpensePieChart 
+          data={[
+            { category: 'housing', amount: dashboardData.monthly_summary.expenses * 0.3, color: '#3b82f6' },
+            { category: 'food', amount: dashboardData.monthly_summary.expenses * 0.25, color: '#f59e0b' },
+            { category: 'transport', amount: dashboardData.monthly_summary.expenses * 0.15, color: '#06b6d4' },
+            { category: 'shopping', amount: dashboardData.monthly_summary.expenses * 0.15, color: '#ec4899' },
+            { category: 'utilities', amount: dashboardData.monthly_summary.expenses * 0.1, color: '#eab308' },
+            { category: 'other', amount: dashboardData.monthly_summary.expenses * 0.05, color: '#6b7280' },
+          ]}
+        />
+        
+        <SavingsTrendChart 
+          data={[
+            { month: 'Jan', income: 50000, expenses: 35000, savings: 15000 },
+            { month: 'Feb', income: 52000, expenses: 36000, savings: 16000 },
+            { month: 'Mar', income: 51000, expenses: 34000, savings: 17000 },
+            { month: 'Apr', income: 53000, expenses: 37000, savings: 16000 },
+            { month: 'May', income: 55000, expenses: 38000, savings: 17000 },
+            { month: 'Jun', income: dashboardData.monthly_summary.income, expenses: dashboardData.monthly_summary.expenses, savings: dashboardData.monthly_summary.savings },
+          ]}
+        />
+      </div>
+
+      <div className="mb-8">
+        <InvestmentPerformanceChart 
+          data={[
+            { name: 'Mutual Funds', invested: 100000, currentValue: 115000, returns: 15000 },
+            { name: 'Stocks', invested: 50000, currentValue: 58000, returns: 8000 },
+            { name: 'Gold', invested: 30000, currentValue: 32000, returns: 2000 },
+            { name: 'FD', invested: 200000, currentValue: 212000, returns: 12000 },
+          ]}
+        />
+      </div>
+
+      {/* AI Insights Widget */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="mb-8"
+      >
+        <AIInsights dashboardData={dashboardData} compact={true} />
+      </motion.div>
 
       {/* Quick Actions */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">

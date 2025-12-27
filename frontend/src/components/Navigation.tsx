@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Menu, X, User } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,8 +16,23 @@ import {
 
 export const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { scrollY } = useScroll();
+
+  // Hide nav on scroll down, show on scroll up
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    const previous = scrollY.getPrevious() ?? 0;
+    if (latest > previous && latest > 150) {
+      setHidden(true);
+    } else {
+      setHidden(false);
+    }
+    
+    setIsScrolled(latest > 50);
+  });
 
   const navLinks = [
     { name: "Features", href: "#features" },
@@ -30,8 +46,32 @@ export const Navigation = () => {
     navigate('/');
   };
 
+  const handleScrollTo = (href: string) => {
+    if (href.startsWith('#')) {
+      const element = document.querySelector(href);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } else {
+      navigate(href);
+    }
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border/40">
+    <motion.nav 
+      variants={{
+        visible: { y: 0 },
+        hidden: { y: "-100%" }
+      }}
+      animate={hidden ? "hidden" : "visible"}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
+      className={`fixed top-0 w-full z-50 backdrop-blur-md border-b transition-colors duration-300 ${
+        isScrolled 
+          ? 'bg-background/95 border-border/60 shadow-lg' 
+          : 'bg-background/80 border-border/40'
+      }`}
+    >
       <div className="max-w-screen-xl mx-auto px-4 md:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
@@ -44,13 +84,15 @@ export const Navigation = () => {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
-              <a
+              <motion.button
                 key={link.name}
-                href={link.href}
+                onClick={() => handleScrollTo(link.href)}
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
                 {link.name}
-              </a>
+              </motion.button>
             ))}
           </div>
 
@@ -82,6 +124,9 @@ export const Navigation = () => {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/chat')}>
                       AI Assistant
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/settings')}>
+                      Settings
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-red-600">
@@ -210,6 +255,6 @@ export const Navigation = () => {
           </div>
         )}
       </div>
-    </nav>
+    </motion.nav>
   );
 };

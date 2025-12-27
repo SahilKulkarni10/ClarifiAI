@@ -22,7 +22,8 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles
+  Sparkles,
+  Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -41,8 +42,10 @@ const navigationItems = [
   { name: 'Loans', path: '/loans', icon: Wallet },
   { name: 'Insurance', path: '/insurance', icon: Shield },
   { name: 'Goals', path: '/goals', icon: Target },
+  { name: 'Insights', path: '/insights', icon: Sparkles },
   { name: 'AI Chat', path: '/chat', icon: MessageSquare },
   { name: 'Analytics', path: '/analytics', icon: BarChart3 },
+  { name: 'Settings', path: '/settings', icon: Settings },
 ];
 
 export const AppLayout = ({ children, title, description }: AppLayoutProps) => {

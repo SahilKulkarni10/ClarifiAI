@@ -96,6 +96,19 @@ class AuthService {
   }
 
   /**
+   * Update user password
+   */
+  async updatePassword(data: { currentPassword: string; newPassword: string }): Promise<{ message: string }> {
+    return apiClient.put<{ message: string }>(
+      `${API_ENDPOINTS.auth.profile}/password`,
+      {
+        current_password: data.currentPassword,
+        new_password: data.newPassword,
+      }
+    );
+  }
+
+  /**
    * Logout user
    */
   logout(): void {

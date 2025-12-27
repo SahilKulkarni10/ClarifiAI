@@ -1,0 +1,61 @@
+# ClariFi AI Backend Dependencies
+# Python 3.10+ required
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+pydantic>=2.10.0
+pydantic-settings>=2.1.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.1.2
+
+# MongoDB
+motor>=3.3.2
+pymongo>=4.6.1
+
+# ChromaDB for RAG
+chromadb>=0.5.0
+
+# Google Gemini
+google-generativeai>=0.8.0
+
+# Embeddings
+sentence-transformers>=3.0.0
+
+# HTTP Client for external APIs
+httpx>=0.26.0
+
+# Stock Data
+yfinance>=0.2.36
+
+# Ollama for local LLM
+ollama>=0.1.0
+aiohttp>=3.9.1
+
+# Caching
+cachetools>=5.3.2
+
+# Date/Time handling
+python-dateutil>=2.8.2
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Logging
+loguru>=0.7.2
+
+# CORS
+starlette>=0.35.1
+
+# Validation
+email-validator>=2.1.0
+
+# Async utilities
+anyio>=4.2.0
+
+# NumPy for financial calculations
+numpy>=1.26.0

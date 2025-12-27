@@ -4,6 +4,7 @@ import { chatService } from '@/services/chat.service';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ChatSuggestions } from '@/components/ChatSuggestions';
 import { 
   MessageSquare, 
   Send, 
@@ -13,9 +14,11 @@ import {
   Loader2,
   Trash2,
   Pause,
-  Play
+  Play,
+  Lightbulb
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocation } from 'react-router-dom';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -100,6 +103,7 @@ const loadMessagesFromStorage = (): Message[] => {
 };
 
 export default function ChatPage() {
+  const location = useLocation();
   const [messages, setMessages] = useState<Message[]>(() => {
     const stored = loadMessagesFromStorage();
     if (stored.length > 0) {
@@ -118,9 +122,19 @@ export default function ChatPage() {
   const [streamingMessage, setStreamingMessage] = useState('');
   const [isStreamingPaused, setIsStreamingPaused] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isPausedRef = useRef(false); // Use ref to avoid closure issues
+
+  // Handle initial prompt from navigation
+  useEffect(() => {
+    if (location.state?.initialPrompt) {
+      setInput(location.state.initialPrompt);
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -278,6 +292,15 @@ export default function ChatPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowSuggestions(!showSuggestions)}
+                  className="gap-2"
+                >
+                  <Lightbulb className="h-4 w-4" />
+                  {showSuggestions ? 'Hide' : 'Show'} Prompts
+                </Button>
                 {isStreaming && (
                   <Button 
                     variant="outline" 
@@ -540,6 +563,18 @@ export default function ChatPage() {
           </Card>
         </div>
       </div>
+
+      {/* Quick Suggestions Modal/Overlay */}
+      {showSuggestions && (
+        <div className="mt-8">
+          <ChatSuggestions 
+            onPromptSelect={(prompt) => {
+              setInput(prompt);
+              setShowSuggestions(false);
+            }}
+          />
+        </div>
+      )}
     </AppLayout>
   );
 }
