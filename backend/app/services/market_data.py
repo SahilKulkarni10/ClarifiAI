@@ -323,16 +323,19 @@ class MarketDataService:
             Dictionary with stock data or None if not found
         """
         if not YFINANCE_AVAILABLE:
-            logger.warning("yfinance not available for stock data")
+            logger.error("yfinance not available for stock data")
             return None
         
         cache_key = f"stock_{symbol}_{exchange}"
         
         if cache_key in self.cache:
-            return self.cache[cache_key]
+            cached_data = self.cache[cache_key]
+            logger.debug(f"Using cached data for {symbol}")
+            return cached_data
         
         try:
             ticker_symbol = f"{symbol}.{exchange}"
+            logger.debug(f"Fetching stock data for {ticker_symbol}...")
             ticker = yf.Ticker(ticker_symbol)
             info = ticker.info
             
@@ -343,7 +346,7 @@ class MarketDataService:
                     await asyncio.sleep(0.5)  # Small delay
                     return await self.get_stock_price(symbol, "BO")
                 # Return None if both fail - we don't want hardcoded data
-                logger.warning(f"Could not fetch real-time data for {symbol}")
+                logger.warning(f"Could not fetch real-time data for {symbol} on {exchange}")
                 return None
             
             # Handle None values gracefully
@@ -379,51 +382,12 @@ class MarketDataService:
             return result
             
         except Exception as e:
-            logger.error(f"Failed to fetch real-time stock data for {symbol}: {e}")
+            logger.error(f"Exception while fetching stock data for {symbol}: {str(e)}")
             # Try BSE if we were trying NSE
             if exchange == "NS":
                 await asyncio.sleep(0.5)
                 return await self.get_stock_price(symbol, "BO")
-            return None  # Don't return hardcoded fallback data
-    
-    def _get_fallback_stock_data(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Return fallback static data for major stocks when API fails."""
-        fallback_stocks = {
-            "RELIANCE": {"name": "Reliance Industries", "sector": "Energy", "pe_ratio": 25.5, "price": 2950},
-            "TCS": {"name": "Tata Consultancy Services", "sector": "IT", "pe_ratio": 28.2, "price": 4180},
-            "HDFCBANK": {"name": "HDFC Bank", "sector": "Banking", "pe_ratio": 19.8, "price": 1720},
-            "INFY": {"name": "Infosys", "sector": "IT", "pe_ratio": 24.5, "price": 1850},
-            "ICICIBANK": {"name": "ICICI Bank", "sector": "Banking", "pe_ratio": 18.5, "price": 1280},
-            "HINDUNILVR": {"name": "Hindustan Unilever", "sector": "FMCG", "pe_ratio": 55.2, "price": 2450},
-            "ITC": {"name": "ITC Limited", "sector": "FMCG", "pe_ratio": 26.1, "price": 465},
-            "SBIN": {"name": "State Bank of India", "sector": "Banking", "pe_ratio": 10.5, "price": 820},
-            "BHARTIARTL": {"name": "Bharti Airtel", "sector": "Telecom", "pe_ratio": 45.2, "price": 1580},
-            "KOTAKBANK": {"name": "Kotak Mahindra Bank", "sector": "Banking", "pe_ratio": 20.1, "price": 1780},
-            "PERSISTENT": {"name": "Persistent Systems", "sector": "IT", "pe_ratio": 35.8, "price": 5200},
-            "POLYCAB": {"name": "Polycab India", "sector": "Manufacturing", "pe_ratio": 42.5, "price": 6800},
-            "TRENT": {"name": "Trent Limited", "sector": "Retail", "pe_ratio": 85.2, "price": 6500},
-            "DIXON": {"name": "Dixon Technologies", "sector": "Electronics", "pe_ratio": 95.5, "price": 15500},
-            "COALINDIA": {"name": "Coal India", "sector": "Mining", "pe_ratio": 7.5, "price": 420, "dividend_yield": 5.2},
-            "POWERGRID": {"name": "Power Grid Corp", "sector": "Utilities", "pe_ratio": 12.8, "price": 320, "dividend_yield": 4.8},
-            "ZOMATO": {"name": "Zomato", "sector": "Food Tech", "pe_ratio": 350, "price": 280},
-        }
-        
-        if symbol in fallback_stocks:
-            data = fallback_stocks[symbol]
-            return {
-                "symbol": symbol,
-                "name": data["name"],
-                "exchange": "NS",
-                "current_price": data["price"],
-                "pe_ratio": data["pe_ratio"],
-                "sector": data["sector"],
-                "dividend_yield": data.get("dividend_yield", 0),
-                "change_percent": 0,
-                "recommendation_reason": "Blue-chip stock with strong fundamentals",
-                "fetched_at": datetime.utcnow().isoformat(),
-                "is_fallback": True
-            }
-        return None
+            return None  # Only return real-time data, no fallbacks
     
     async def get_multiple_stocks(self, symbols: List[str], exchange: str = "NS") -> List[Dict[str, Any]]:
         """
@@ -532,32 +496,37 @@ class MarketDataService:
         stock_data = []
         failed_symbols = []
         for i, symbol in enumerate(target_symbols[:15]):  # Try more symbols to get at least 5-7 with real data
-            data = await self.get_stock_price(symbol)
-            if data and not data.get("is_fallback"):  # Skip fallback/cached data
-                # Add recommendation reason based on metrics
-                recommendation_reason = self._generate_stock_recommendation(data)
-                data["recommendation_reason"] = recommendation_reason
-                stock_data.append(data)
-                if len(stock_data) >= 7:  # Got enough real-time stocks
-                    break
-            else:
+            try:
+                data = await self.get_stock_price(symbol)
+                if data and not data.get("is_fallback"):  # Skip fallback/cached data
+                    # Add recommendation reason based on metrics
+                    recommendation_reason = self._generate_stock_recommendation(data)
+                    data["recommendation_reason"] = recommendation_reason
+                    stock_data.append(data)
+                    logger.info(f"✓ Successfully fetched {symbol}: ₹{data.get('current_price', 'N/A')}")
+                    if len(stock_data) >= 7:  # Got enough real-time stocks
+                        break
+                else:
+                    failed_symbols.append(symbol)
+                    logger.debug(f"✗ Failed to fetch {symbol}")
+            except Exception as e:
+                logger.error(f"Error fetching {symbol}: {e}")
                 failed_symbols.append(symbol)
             
             # Small delay to avoid rate limiting
             if i < len(target_symbols) - 1:
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)  # Increased delay to avoid rate limiting
         
         # Log failures
         if failed_symbols:
-            logger.warning(f"Failed to fetch data for: {', '.join(failed_symbols)}")
+            logger.warning(f"Failed to fetch data for {len(failed_symbols)} symbols: {', '.join(failed_symbols[:5])}")
         
-        # Check if we got real-time data
+        # Check if we got real-time data - provide fallback recommendations
         if not stock_data:
-            logger.error("No real-time stock data available. Using fallback recommendations.")
-            # Provide fallback generic recommendations
-            recommendations["recommended_stocks"] = []
-            recommendations["fallback_advice"] = self._get_generic_investment_advice(risk_profile)
-            recommendations["error"] = "Unable to fetch real-time stock data at the moment. Here's general guidance based on your risk profile."
+            logger.warning("No real-time stock data available. Providing general recommendations.")
+            recommendations["recommended_stocks"] = self._get_fallback_recommendations(risk_profile)
+            recommendations["warning"] = "Real-time market data is temporarily unavailable. Showing general investment recommendations. Please try again later for live market prices."
+            recommendations["data_source"] = "static"
             return recommendations
         
         # Sort by a simple scoring mechanism
@@ -579,6 +548,7 @@ class MarketDataService:
         
         stock_data.sort(key=lambda x: x.get("score", 0), reverse=True)
         recommendations["recommended_stocks"] = stock_data
+        recommendations["data_source"] = "live"
         logger.info(f"Fetched {len(stock_data)} real-time stock recommendations")
         
         # Add Nifty 50 overview
@@ -659,36 +629,6 @@ class MarketDataService:
             reasons.append(f"{stock_data.get('sector', 'Market')} sector play")
         
         return ", ".join(reasons[:3])
-    
-    def _get_generic_investment_advice(self, risk_profile: str) -> str:
-        """Generate generic investment advice when real-time data unavailable."""
-        advice_map = {
-            "conservative": (
-                "For a conservative approach, consider:\n"
-                "• Large-cap stocks from banking (HDFC Bank, ICICI Bank) and IT sectors (TCS, Infosys)\n"
-                "• Blue-chip companies with consistent dividends\n"
-                "• Index funds tracking Nifty 50\n"
-                "• 60% equity, 30% debt funds, 10% gold\n"
-                "Start with SIP for rupee cost averaging."
-            ),
-            "moderate": (
-                "For a balanced portfolio, consider:\n"
-                "• Mix of large-cap (50%) and mid-cap (30%) stocks\n"
-                "• Sectors: Banking, IT, FMCG, Pharma\n"
-                "• Nifty 50 and Nifty Next 50 index funds\n"
-                "• 70% equity, 20% debt, 10% gold\n"
-                "Use SIP for systematic investing."
-            ),
-            "aggressive": (
-                "For growth-focused investing, consider:\n"
-                "• Mid-cap and small-cap stocks (higher risk, higher returns)\n"
-                "• Growth sectors: Technology, EV, Renewable Energy\n"
-                "• Flexi-cap and multi-cap funds\n"
-                "• 80% equity, 10% debt, 10% alternatives\n"
-                "Monitor quarterly and rebalance annually."
-            )
-        }
-        return advice_map.get(risk_profile, advice_map["moderate"])
     
     async def _get_index_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get index data (Nifty, Sensex)."""
@@ -780,6 +720,118 @@ class MarketDataService:
             "HEROMOTOCO", "BRITANNIA", "DABUR", "GRASIM", "HINDALCO",
             "INDUSINDBK", "BPCL", "IOC", "TATACONSUM", "BAJAJFINSV", "SBILIFE"
         ]
+    
+    def _get_fallback_recommendations(self, risk_profile: str = "moderate") -> List[Dict[str, Any]]:
+        """
+        Provide general stock recommendations when real-time data is unavailable.
+        
+        Args:
+            risk_profile: User's risk profile
+            
+        Returns:
+            List of general stock recommendations without live prices
+        """
+        if risk_profile == "conservative":
+            recommendations = [
+                {
+                    "symbol": "TCS",
+                    "name": "Tata Consultancy Services",
+                    "sector": "IT",
+                    "recommendation_reason": "Large-cap IT leader, stable dividend payer, defensive stock"
+                },
+                {
+                    "symbol": "HDFCBANK",
+                    "name": "HDFC Bank",
+                    "sector": "Banking",
+                    "recommendation_reason": "India's largest private bank, consistent performer, strong fundamentals"
+                },
+                {
+                    "symbol": "HINDUNILVR",
+                    "name": "Hindustan Unilever",
+                    "sector": "FMCG",
+                    "recommendation_reason": "Blue-chip FMCG stock, defensive play, regular dividends"
+                },
+                {
+                    "symbol": "ITC",
+                    "name": "ITC Limited",
+                    "sector": "FMCG",
+                    "recommendation_reason": "Diversified conglomerate, high dividend yield, stable operations"
+                },
+                {
+                    "symbol": "INFY",
+                    "name": "Infosys",
+                    "sector": "IT",
+                    "recommendation_reason": "Global IT services leader, strong fundamentals, quality management"
+                }
+            ]
+        elif risk_profile == "aggressive":
+            recommendations = [
+                {
+                    "symbol": "ZOMATO",
+                    "name": "Zomato",
+                    "sector": "Consumer Tech",
+                    "recommendation_reason": "Fast-growing food delivery platform, new-age tech stock"
+                },
+                {
+                    "symbol": "DIXON",
+                    "name": "Dixon Technologies",
+                    "sector": "Electronics",
+                    "recommendation_reason": "Beneficiary of PLI scheme, strong growth in electronics manufacturing"
+                },
+                {
+                    "symbol": "TRENT",
+                    "name": "Trent (Westside)",
+                    "sector": "Retail",
+                    "recommendation_reason": "Fast-growing retail chain, strong same-store sales growth"
+                },
+                {
+                    "symbol": "PERSISTENT",
+                    "name": "Persistent Systems",
+                    "sector": "IT",
+                    "recommendation_reason": "Mid-cap IT with strong growth, product engineering focus"
+                },
+                {
+                    "symbol": "POLYCAB",
+                    "name": "Polycab India",
+                    "sector": "Cables & Wires",
+                    "recommendation_reason": "Market leader in cables, infrastructure growth beneficiary"
+                }
+            ]
+        else:  # moderate
+            recommendations = [
+                {
+                    "symbol": "RELIANCE",
+                    "name": "Reliance Industries",
+                    "sector": "Diversified",
+                    "recommendation_reason": "India's largest company, diversified business, strong balance sheet"
+                },
+                {
+                    "symbol": "ICICIBANK",
+                    "name": "ICICI Bank",
+                    "sector": "Banking",
+                    "recommendation_reason": "Second-largest private bank, strong retail franchise, improving asset quality"
+                },
+                {
+                    "symbol": "BHARTIARTL",
+                    "name": "Bharti Airtel",
+                    "sector": "Telecom",
+                    "recommendation_reason": "Telecom leader, 5G rollout beneficiary, improving ARPU"
+                },
+                {
+                    "symbol": "MARUTI",
+                    "name": "Maruti Suzuki",
+                    "sector": "Auto",
+                    "recommendation_reason": "Market leader in passenger vehicles, strong distribution network"
+                },
+                {
+                    "symbol": "KOTAKBANK",
+                    "name": "Kotak Mahindra Bank",
+                    "sector": "Banking",
+                    "recommendation_reason": "Well-managed private bank, diversified business model"
+                }
+            ]
+        
+        return recommendations
 
 
 # Global instance
